@@ -6,7 +6,7 @@
 #include <GL/glew.h>
 
 // GLFW
-#include <GLFW/glfw3.h>
+//#include <GLFW/glfw3.h>
 
 // GL includes
 #include <learnopengl/shader.h>
@@ -14,16 +14,15 @@
 #include <learnopengl/model.h>
 
 // GLM Mathemtics
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
+//#include <glm/glm.hpp>
+//#include <glm/gtc/matrix_transform.hpp>
+//#include <glm/gtc/type_ptr.hpp>
 
 // Other Libs
 #include <SOIL.h>
 #include <learnopengl/filesystem.h>
 
-// Setup some OpenGL options
-glEnable(GL_DEPTH_TEST);
+
 
 // Setup and compile our shaders
 Shader shader("shader.vs", "shader.frag");
@@ -206,5 +205,6 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 {
     camera.ProcessMouseScroll(yoffset);
 }
-*/
+
 #pragma endregion
+*/

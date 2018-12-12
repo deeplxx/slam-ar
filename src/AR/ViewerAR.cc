@@ -1,25 +1,27 @@
-/**
-* This file is part of ORB-SLAM2.
-*
-* Copyright (C) 2014-2016 Raúl Mur-Artal <raulmur at unizar dot es> (University of Zaragoza)
-* For more information see <https://github.com/raulmur/ORB_SLAM2>
-*
-* ORB-SLAM2 is free software: you can redistribute it and/or modify
-* it under the terms of the GNU General Public License as published by
-* the Free Software Foundation, either version 3 of the License, or
-* (at your option) any later version.
-*
-* ORB-SLAM2 is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-* GNU General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License
-* along with ORB-SLAM2. If not, see <http://www.gnu.org/licenses/>.
-*/
-
 #include "ViewerAR.h"
+// Std. Includes
+#include <string>
 
+// GLEW
+#define GLEW_STATIC
+#include <GL/glew.h>
+
+// GLFW
+//#include <GLFW/glfw3.h>
+
+// GL includes
+#include <learnopengl/shader.h>
+#include <learnopengl/camera.h>
+#include <learnopengl/model.h>
+
+// GLM Mathemtics
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
+// Other Libs
+#include <SOIL.h>
+#include <learnopengl/filesystem.h>
 #include <opencv2/highgui/highgui.hpp>
 
 #include <mutex>
@@ -30,7 +32,6 @@ using namespace std;
 
 namespace ORB_SLAM2
 {
-
 const float eps = 1e-4;
 
 cv::Mat ExpSO3(const float &x, const float &y, const float &z)
@@ -52,17 +53,79 @@ cv::Mat ExpSO3(const cv::Mat &v)
     return ExpSO3(v.at<float>(0),v.at<float>(1),v.at<float>(2));
 }
 
+GLfloat* getView(const cv::Mat &Tcw)
+{
+    GLfloat* view = new GLfloat[16]{
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1
+    };
+    if (!Tcw.empty())
+    {
+        view[0] = Tcw.at<float>(0,0);
+        view[1] = Tcw.at<float>(1,0);
+        view[2] = Tcw.at<float>(2,0);
+        view[3]  = 0.0;
+
+        view[4] = Tcw.at<float>(0,1);
+        view[5] = Tcw.at<float>(1,1);
+        view[6] = Tcw.at<float>(2,1);
+        view[7]  = 0.0;
+
+        view[8] = Tcw.at<float>(0,2);
+        view[9] = Tcw.at<float>(1,2);
+        view[10] = Tcw.at<float>(2,2);
+        view[11]  = 0.0;
+
+        view[12] = Tcw.at<float>(0,3);
+        view[13] = Tcw.at<float>(1,3);
+        view[14] = Tcw.at<float>(2,3);
+        view[15]  = 1.0;
+    }
+    return view;
+}
+
+GLfloat* getProjection(int w, int h, double fu, double fv, double u0, double v0, double zNear, double zFar )
+{
+     // http://www.songho.ca/opengl/gl_projectionmatrix.html
+     const double L = -(u0) * zNear / fu;
+     const double R = +(w-u0) * zNear / fu;
+     const double T = -(v0) * zNear / fv;
+     const double B = +(h-v0) * zNear / fv;
+ 
+     GLfloat* P = new GLfloat[16]{
+         0, 0, 0, 0,
+         0, 0, 0, 0,
+         0, 0, 0, 0,
+         0, 0, 0, 0
+     };
+     //P.type = GlProjectionStack;
+     //std::fill_n(P.m,4*4,0);
+ 
+     P[0*4+0] = 2 * zNear / (R-L);
+     P[1*4+1] = 2 * zNear / (T-B);
+ 
+     P[2*4+0] = (R+L)/(L-R);
+     P[2*4+1] = (T+B)/(B-T);
+     P[2*4+2] = (zFar +zNear) / (zFar - zNear);
+     P[2*4+3] = 1.0;
+ 
+     P[3*4+2] =  (2*zFar*zNear)/(zNear - zFar);
+     return P;
+}
+
 ViewerAR::ViewerAR(){}
 
 void ViewerAR::Run()
 {
+
     int w,h,wui;
 
     cv::Mat im, Tcw;
     int status;
     vector<cv::KeyPoint> vKeys;
     vector<MapPoint*> vMPs;
-
     while(1)
     {
         GetImagePose(im,Tcw,status,vKeys,vMPs);
@@ -78,10 +141,20 @@ void ViewerAR::Run()
 
     wui=200;
 
-    pangolin::CreateWindowAndBind("Viewer",w+wui,h);
 
+
+    pangolin::CreateWindowAndBind("Viewer",w+wui,h);
+    glewExperimental = GL_TRUE;
+    glewInit();
     glEnable(GL_DEPTH_TEST);
     glEnable (GL_BLEND);
+    cout << "start -2" << endl;
+    // Setup and compile our shaders
+    Shader shader("shader.vs", "shader.frag");
+    cout << "start -1" << endl;
+    // Load models
+    Model ourModel(FileSystem::getPath("resources/objects/nanosuit/nanosuit.obj").c_str());
+    cout << "start 0" << endl;
 
     pangolin::CreatePanel("menu").SetBounds(0.0,1.0,0.0,pangolin::Attach::Pix(wui));
     pangolin::Var<bool> menu_detectplane("menu.Insert Cube",false,false);
@@ -104,9 +177,8 @@ void ViewerAR::Run()
     pangolin::GlTexture imageTexture(w,h,GL_RGB,false,0,GL_RGB,GL_UNSIGNED_BYTE);
 
     pangolin::OpenGlMatrixSpec P = pangolin::ProjectionMatrixRDF_TopLeft(w,h,fx,fy,cx,cy,0.001,1000);
-
+    GLfloat* projection = getProjection(w,h,fx,fy,cx,cy,0.001,1000);
     vector<Plane*> vpPlane;
-
     while(1)
     {
 
@@ -142,6 +214,7 @@ void ViewerAR::Run()
 
         glClear(GL_DEPTH_BUFFER_BIT);
 
+
         // Load camera projection
         glMatrixMode(GL_PROJECTION);
         P.Load();
@@ -151,6 +224,8 @@ void ViewerAR::Run()
         // Load camera pose
         LoadCameraPose(Tcw);
 
+        // view matrix
+        GLfloat* view = getView(Tcw);
         // Draw virtual things
         if(status==2)
         {
@@ -212,7 +287,15 @@ void ViewerAR::Run()
                         // Draw cube
                         if(menu_drawcube)
                         {
-                            DrawCube(menu_cubesize);
+                            //DrawCube(menu_cubesize);
+                            //load_obj(view, projection);
+                            shader.Use();   // <-- Don't forget this one!
+	                        // Transformation matrices  
+
+	                        glUniformMatrix4fv(glGetUniformLocation(shader.Program, "projection"), 1, GL_FALSE, projection);
+	                        glUniformMatrix4fv(glGetUniformLocation(shader.Program, "view"), 1, GL_FALSE, view);
+
+	                        ourModel.Draw(shader);
                         }
 
                         // Draw grid plane

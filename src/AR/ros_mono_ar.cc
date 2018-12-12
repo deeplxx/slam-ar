@@ -119,7 +119,7 @@ int main(int argc, char **argv)
         DistCoef.resize(5);
         DistCoef.at<float>(4) = k3;
     }
-
+    cout << "start viewAR" << endl;
     thread tViewer = thread(&ORB_SLAM2::ViewerAR::Run,&viewerAR);
 
     ros::spin();
